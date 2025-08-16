@@ -13,7 +13,6 @@ require("./cron/newsCron"); // this line will start the cron job
 
 
 app.use(express.json());
-app.use(cors());
 app.use(cors({
   origin: function (origin, callback) {
     // allow requests with no origin (like mobile apps, curl, Postman)
