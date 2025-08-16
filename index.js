@@ -7,7 +7,7 @@ const allowedOrigins = [
   "http://localhost:3000",                 
   "https://civic-india-frontend-beta.vercel.app",
 ];
-
+const PORT = process.env.PORT || 8000;
 require("dotenv").config();
 require("./cron/newsCron"); // this line will start the cron job
 
@@ -28,6 +28,11 @@ app.use(cors({
 
 app.use('/api', hierarchyRoutes);
 
-app.listen(8000, () => {
+app.listen(PORT, () => {
   console.log('Server running on port 8000');
+});
+
+app.use((err, req, res, next) => {
+  console.error("❌ Error occurred:", err.stack || err);
+  res.status(500).json({ error: err.message || "Internal Server Error" });
 });
