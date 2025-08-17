@@ -6,7 +6,7 @@ const pool = new Pool(
   process.env.DATABASE_URL
     ? {
         connectionString: process.env.DATABASE_URL,
-        ssl: { rejectUnauthorized: false } // needed for Supabase
+        ssl: { require: true, rejectUnauthorized: false } // needed for Supabase
       }
     : {
         user: 'postgres',
