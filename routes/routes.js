@@ -11,6 +11,7 @@ const regionController = require("../controllers/FindLeaderByRegionType");
 const financialsController = require('../controllers/financialsController');
 const responsibilitiesByLeaderController = require('../controllers/responsibilitiesByLeaderController');
 const criminalRecordsController = require("../controllers/criminalRecordsController");
+const educationController = require("../controllers/educationController");
 
 router.get("/criminal-records/:slug", criminalRecordsController.getCriminalRecordsBySlug);
 router.get('/leader-responsibilities/:slug', responsibilitiesByLeaderController.getResponsibilitiesByLeader);
@@ -24,4 +25,5 @@ router.get("/find-leader", leaderController.findLeadersByName);
 router.get("/find-leader-by-region", regionController.findLeaderByRegionType);
 router.get('/about/:slug', aboutController.getLeaderAbout);
 router.get('/financials/:slug', financialsController.getLeaderFinancials);
+router.get("/education/:slug", educationController.getEducationRecords);
 module.exports = router;
