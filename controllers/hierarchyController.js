@@ -17,10 +17,17 @@ const getNationalHierarchy = async (req, res) => {
       });
     }
 
-    if (city && city.toLowerCase() !== "bhopal") {
-      return res
-        .status(400)
-        .json({ error: "Currently, data is only available for Bhopal city." });
+    if (city) {
+      const cityCheck = await pool.query(
+        `SELECT id FROM cities WHERE LOWER(name) = $1`,
+        [city.toLowerCase()],
+      );
+
+      if (cityCheck.rows.length === 0) {
+        return res.status(400).json({
+          error: `Currently, data is only available for Bhopal and Indore city, City '${city}' not supported.`,
+        });
+      }
     }
 
     let response = {};
@@ -39,7 +46,7 @@ const getNationalHierarchy = async (req, res) => {
     // === 3. STATE LEVEL ===
     if (
       state?.toLowerCase() === "madhya pradesh" ||
-      city?.toLowerCase() === "bhopal" ||
+      ["bhopal", "indore"].includes(city?.toLowerCase() || "") ||
       ward ||
       pincode
     ) {
@@ -59,25 +66,42 @@ const getNationalHierarchy = async (req, res) => {
     }
 
     // === 4. LOCAL LEVEL ===
-    if (city?.toLowerCase() === "bhopal" || pincode) {
+    if (["bhopal", "indore"].includes(city?.toLowerCase() || "") || pincode) {
       let cityId;
-      
-      if (city?.toLowerCase() === "bhopal") {
+      let cityName;
+
+      if (["bhopal", "indore"].includes(city?.toLowerCase() || "")) {
         const cityIdResult = await pool.query(
-          `SELECT id FROM cities WHERE LOWER(name) = $1`,
-          [city.toLowerCase()]
+          `SELECT id, name FROM cities WHERE LOWER(name) = $1`,
+          [city.toLowerCase()],
         );
 
         if (cityIdResult.rows.length === 0) {
           return res.status(400).json({ error: `City '${city}' not found.` });
         }
         cityId = cityIdResult.rows[0].id;
-      } else {
-        // For pincode, we assume it's Bhopal (since validation above ensures this)
-        const cityIdResult = await pool.query(
-          `SELECT id FROM cities WHERE LOWER(name) = 'bhopal'`
+        cityName = cityIdResult.rows[0].name;
+      } else if (pincode) {
+        const pincodeCityResult = await pool.query(
+          `
+    SELECT c.id, c.name
+    FROM pincode_wards pw
+    JOIN wards w ON pw.ward_id = w.id
+    JOIN cities c ON w.city_id = c.id
+    WHERE pw.pincode = $1
+    LIMIT 1
+    `,
+          [pincode],
         );
-        cityId = cityIdResult.rows[0].id;
+
+        if (pincodeCityResult.rows.length === 0) {
+          return res
+            .status(400)
+            .json({ error: `Pincode ${pincode} not found.` });
+        }
+
+        cityId = pincodeCityResult.rows[0].id;
+        cityName = pincodeCityResult.rows[0].name;
       }
 
       // === PINCODE LOGIC ===
@@ -85,13 +109,13 @@ const getNationalHierarchy = async (req, res) => {
         // Get constituency_id from pincode_wards table
         const pincodeResult = await pool.query(
           `SELECT constituency_id FROM pincode_wards WHERE pincode = $1`,
-          [pincode]
+          [pincode],
         );
 
         if (pincodeResult.rows.length === 0) {
-          return res
-            .status(400)
-            .json({ error: `Pincode ${pincode} not found in Bhopal.` });
+          return res.status(400).json({
+            error: `Pincode ${pincode} not found in Bhopal or Indore.`,
+          });
         }
 
         const constituencyId = pincodeResult.rows[0].constituency_id;
@@ -99,12 +123,13 @@ const getNationalHierarchy = async (req, res) => {
         // Get constituency name
         const constituencyResult = await pool.query(
           `SELECT name FROM constituencies WHERE id = $1`,
-          [constituencyId]
+          [constituencyId],
         );
 
-        const constituencyName = constituencyResult.rows.length > 0 
-          ? constituencyResult.rows[0].name 
-          : "Unknown Constituency";
+        const constituencyName =
+          constituencyResult.rows.length > 0
+            ? constituencyResult.rows[0].name
+            : "Unknown Constituency";
 
         // Get MLA for this constituency
         const mlaResult = await pool.query(
@@ -115,7 +140,7 @@ const getNationalHierarchy = async (req, res) => {
             AND LOWER(al.designation) = 'mla'
           LIMIT 1
           `,
-          [constituencyId]
+          [constituencyId],
         );
 
         // Get only non-MLA city-level leaders (BMC hierarchy, but exclude MLAs)
@@ -128,12 +153,12 @@ const getNationalHierarchy = async (req, res) => {
             AND LOWER(al.designation) != 'mla'
           ORDER BY COALESCE(al.display_order, 999999), al.id
           `,
-          [cityId]
+          [cityId],
         );
 
         // Build city hierarchy (BMC, Mayor, etc. - excluding MLAs)
         const cityHierarchy = buildHierarchy(cityLeadersResult.rows);
-        
+
         // Create local hierarchy starting with city leaders (non-MLAs)
         const localHierarchy = [...cityHierarchy];
 
@@ -149,25 +174,55 @@ const getNationalHierarchy = async (req, res) => {
             WHERE parent_id = $1
             ORDER BY COALESCE(display_order, 999999), id
             `,
-            [mla.id]
+            [mla.id],
           );
 
           mla.children = mlaChildrenResult.rows || [];
           localHierarchy.push(mla);
         }
 
-        response.local = {
-          level: "Local Level",
-          hierarchy: localHierarchy,
-          constituency_name: constituencyName,
-          pincode: pincode,
-        };
+        // Fetch ward details using ward number coming from request
+        const wardResult = await pool.query(
+          `SELECT * FROM wards WHERE ward_number = $1 AND city_id = $2`,
+          [ward, cityId],
+        );
 
+        if (wardResult.rows.length > 0) {
+          const wardData = wardResult.rows[0];
+
+          // Add Ward Councillor just like ward-branch
+          localHierarchy.push({
+            id: null,
+            name: wardData.ward_councillor,
+            designation: `Ward Councillor - Ward ${wardData.ward_number}`,
+            children: [],
+          });
+
+          // Also attach in response object
+          response.local = {
+            level: "Local Level",
+            city_name: cityName,
+            hierarchy: localHierarchy,
+            constituency_name: constituencyName,
+            pincode: pincode,
+            ward_number: wardData.ward_number,
+            ward_councillor: wardData.ward_councillor,
+          };
+        } else {
+          // fallback if ward not found
+          response.local = {
+            level: "Local Level",
+            city_name: cityName,
+            hierarchy: localHierarchy,
+            constituency_name: constituencyName,
+            pincode: pincode,
+          };
+        }
       } else if (ward) {
         // === WARD LOGIC (existing) ===
         const wardResult = await pool.query(
           `SELECT * FROM wards WHERE ward_number = $1 AND city_id = $2`,
-          [ward, cityId]
+          [ward, cityId],
         );
 
         if (wardResult.rows.length === 0) {
@@ -182,12 +237,13 @@ const getNationalHierarchy = async (req, res) => {
         // Get constituency name
         const constituencyResult = await pool.query(
           `SELECT name FROM constituencies WHERE id = $1`,
-          [constituencyId]
+          [constituencyId],
         );
 
-        const constituencyName = constituencyResult.rows.length > 0 
-          ? constituencyResult.rows[0].name 
-          : "Unknown Constituency";
+        const constituencyName =
+          constituencyResult.rows.length > 0
+            ? constituencyResult.rows[0].name
+            : "Unknown Constituency";
 
         // Get MLA for this constituency
         const mlaResult = await pool.query(
@@ -198,7 +254,7 @@ const getNationalHierarchy = async (req, res) => {
             AND LOWER(al.designation) = 'mla'
           LIMIT 1
           `,
-          [constituencyId]
+          [constituencyId],
         );
 
         // Get only non-MLA city-level leaders (BMC hierarchy, but exclude MLAs)
@@ -211,12 +267,12 @@ const getNationalHierarchy = async (req, res) => {
             AND LOWER(al.designation) != 'mla'
           ORDER BY COALESCE(al.display_order, 999999), al.id
           `,
-          [cityId]
+          [cityId],
         );
 
         // Build city hierarchy (BMC, Mayor, etc. - excluding MLAs)
         const cityHierarchy = buildHierarchy(cityLeadersResult.rows);
-        
+
         // Create local hierarchy starting with city leaders (non-MLAs)
         const localHierarchy = [...cityHierarchy];
 
@@ -232,7 +288,7 @@ const getNationalHierarchy = async (req, res) => {
             WHERE parent_id = $1
             ORDER BY COALESCE(display_order, 999999), id
             `,
-            [mla.id]
+            [mla.id],
           );
 
           mla.children = mlaChildrenResult.rows || [];
@@ -249,12 +305,12 @@ const getNationalHierarchy = async (req, res) => {
 
         response.local = {
           level: "Local Level",
+          city_name: cityName,
           hierarchy: localHierarchy,
           constituency_name: constituencyName,
           ward_number: wardData.ward_number,
           ward_councillor: wardData.ward_councillor,
         };
-
       } else {
         // === NO WARD/PINCODE - existing behavior (all MLAs + other city leaders) ===
         const localResult = await pool.query(
@@ -265,13 +321,14 @@ const getNationalHierarchy = async (req, res) => {
           WHERE al.region_type = 'city' AND al.city_id = $1
           ORDER BY COALESCE(al.display_order, 999999), al.id
           `,
-          [cityId]
+          [cityId],
         );
 
         const localHierarchy = buildHierarchy(localResult.rows);
 
         response.local = {
           level: "Local Level",
+          city_name: cityName,
           hierarchy: localHierarchy,
         };
       }

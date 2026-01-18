@@ -10,7 +10,6 @@ const allowedOrigins = [
 const PORT = process.env.PORT || 8000;
 
 require("dotenv").config();
-require("./cron/newsCron"); // start cron job
 
 // Middlewares
 app.use(express.json());
