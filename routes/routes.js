@@ -5,7 +5,6 @@ const { getNationalHierarchy } = require("../controllers/hierarchyController");
 const {
   getResponsibilitiesBySlug,
 } = require("../controllers/responsibilitiesController");
-const { getNewsByPersonSlug } = require("../controllers/newsController");
 
 const aboutController = require("../controllers/aboutController");
 const leaderController = require("../controllers/searchLeaders");
@@ -25,7 +24,7 @@ router.get(
 );
 router.get("/hierarchy", getNationalHierarchy);
 router.get("/responsibilities/:slug", getResponsibilitiesBySlug);
-router.get("/news/:slug", getNewsByPersonSlug);
+
 
 router.get("/find-leader", leaderController.findLeadersByName);
 router.get("/find-leader-by-region", regionController.findLeaderByRegionType);
