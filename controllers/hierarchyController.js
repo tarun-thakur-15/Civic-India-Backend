@@ -1,5 +1,5 @@
 const pool = require("../utils/db");
-const SUPPORTED_STATES = ["madhya pradesh", "telangana"];
+const SUPPORTED_STATES = ["madhya pradesh", "telangana", "gujarat"];
 const getNationalHierarchy = async (req, res) => {
   try {
     const { country, state, city, ward, pincode } = req.query;
@@ -25,7 +25,7 @@ const getNationalHierarchy = async (req, res) => {
 
       if (cityCheck.rows.length === 0) {
         return res.status(400).json({
-          error: `Currently, data is only available for Bhopal, Indore and Hyderabad cities, City '${city}' not supported.`,
+          error: `Currently, data is only available for Bhopal, Indore, Hyderabad and Ahmedabad cities, City '${city}' not supported.`,
         });
       }
     }
@@ -48,31 +48,49 @@ const getNationalHierarchy = async (req, res) => {
       bhopal: "madhya pradesh",
       indore: "madhya pradesh",
       hyderabad: "telangana",
+      ahmedabad: "gujarat",
     };
     const normalizedCity = city?.toLowerCase();
     const targetState = state?.toLowerCase() || cityToStateMap[normalizedCity];
 
     // if (targetState || ward || pincode)
-    if (targetState) {
-      const stateResult = await pool.query(
-        `
-      SELECT al.*
-      FROM all_leaders al
-      JOIN states s ON al.state_id = s.id
-      WHERE al.region_type = 'state'
-      AND LOWER(s.name) = $1
-      ORDER BY COALESCE(al.display_order, 999999), al.id
+if (targetState) {
+
+  // 1️⃣ Get state id + proper formatted name
+  const stateInfo = await pool.query(
+    `SELECT id, name FROM states WHERE LOWER(name) = $1`,
+    [targetState]
+  );
+
+  if (stateInfo.rows.length === 0) {
+    return res.status(400).json({ error: `State '${targetState}' not found.` });
+  }
+
+  const stateId = stateInfo.rows[0].id;
+  const stateName = stateInfo.rows[0].name;
+
+  // 2️⃣ Fetch leaders using state_id (faster + cleaner than JOIN)
+  const stateResult = await pool.query(
+    `
+    SELECT *
+    FROM all_leaders
+    WHERE region_type = 'state'
+    AND state_id = $1
+    ORDER BY COALESCE(display_order, 999999), id
     `,
-        [targetState],
-      );
+    [stateId]
+  );
 
-      const stateHierarchy = buildHierarchy(stateResult.rows);
+  const stateHierarchy = buildHierarchy(stateResult.rows);
 
-      response.state = {
-        level: "State Level",
-        hierarchy: stateHierarchy,
-      };
-    }
+  // 3️⃣ Add state_name in response
+  response.state = {
+    level: "State Level",
+    state_name: stateName,  // ⭐ NEW FIELD
+    hierarchy: stateHierarchy,
+  };
+}
+
 
     // === 4. LOCAL LEVEL ===
     if (cityToStateMap[normalizedCity] || pincode) {
@@ -123,7 +141,7 @@ const getNationalHierarchy = async (req, res) => {
 
         if (pincodeResult.rows.length === 0) {
           return res.status(400).json({
-            error: `Pincode ${pincode} not found in Bhopal, Indore or Hyderabad.`,
+            error: `Pincode ${pincode} not found in Bhopal, Indore, Hyderabad or Ahmedabad.`,
           });
         }
 
@@ -374,20 +392,17 @@ function buildHierarchy(leaders) {
   return roots;
 }
 
-// function sortByDisplayOrder(nodes) {
-//   nodes.sort((a, b) => {
-//     const aOrder = a.display_order ?? 999999;
-//     const bOrder = b.display_order ?? 999999;
-//     return aOrder - bOrder;
-//   });
-//   nodes.forEach((node) => {
-//     if (node.children.length > 0) {
-//       sortByDisplayOrder(node.children);
-//     }
-//   });
-// }
 function sortByDisplayOrder(nodes) {
   nodes.sort((a, b) => {
+
+    // ⭐ SPECIAL RULE → Junior ministers always last
+    const aJunior = a.designation?.toLowerCase().includes("junior");
+    const bJunior = b.designation?.toLowerCase().includes("junior");
+
+    if (aJunior && !bJunior) return 1;
+    if (!aJunior && bJunior) return -1;
+
+    // ⭐ existing logic stays same
     const aRank = a.hierarchy_rank ?? 999999;
     const bRank = b.hierarchy_rank ?? 999999;
 
@@ -398,7 +413,7 @@ function sortByDisplayOrder(nodes) {
 
     if (aOrder !== bOrder) return aOrder - bOrder;
 
-    return a.id - b.id; // final stable fallback
+    return a.id - b.id;
   });
 
   nodes.forEach((node) => {
@@ -407,6 +422,7 @@ function sortByDisplayOrder(nodes) {
     }
   });
 }
+
 
 
 module.exports = { getNationalHierarchy };
