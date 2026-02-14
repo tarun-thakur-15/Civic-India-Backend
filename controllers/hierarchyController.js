@@ -267,14 +267,6 @@ if (wardRows.length === 0) {
 }
 
 const constituencyId = wardRows[0].constituency_id;
-// wardRows.forEach((wardData) => {
-//   localHierarchy.push({
-//     id: null,
-//     name: wardData.ward_councillor,
-//     designation: `Ward Councillor - Ward ${wardData.ward_number}`,
-//     children: [],
-//   });
-// });
 
         // Get constituency name
         const constituencyResult = await pool.query(
