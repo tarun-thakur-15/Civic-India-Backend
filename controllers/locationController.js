@@ -202,7 +202,8 @@ const findMyMayor = async (req, res) => {
         about,
         salary,
         networth,
-        liabilities
+        liabilities,
+        assets
       FROM all_leaders
       WHERE designation = $1
       LIMIT 1
@@ -229,7 +230,8 @@ const findMyMayor = async (req, res) => {
       about: mayor.about,
       salary: mayor.salary,
       networth: mayor.networth,
-      liabilities: mayor.liabilities
+      liabilities: mayor.liabilities,
+      assets: mayor.assets
     });
 
   } catch (error) {
