@@ -14,7 +14,7 @@ const findMyCM = async (req, res) => {
     // 2️⃣ Find state in DB
     const stateResult = await pool.query(
       `SELECT id, name FROM states WHERE LOWER(name) = $1`,
-      [state.trim().toLowerCase()]
+      [state.trim().toLowerCase()],
     );
 
     if (stateResult.rows.length === 0) {
@@ -35,7 +35,7 @@ const findMyCM = async (req, res) => {
       AND state_id = $1
       LIMIT 1
       `,
-      [stateId]
+      [stateId],
     );
 
     if (cmResult.rows.length === 0) {
@@ -58,9 +58,8 @@ const findMyCM = async (req, res) => {
       salary: cm.salary,
       networth: cm.networth,
       assets: cm.assets,
-      liabilities: cm.liabilities
+      liabilities: cm.liabilities,
     });
-
   } catch (error) {
     console.error("Error finding Chief Minister:", error);
     return res.status(500).json({
@@ -88,7 +87,7 @@ const findMyMLA = async (req, res) => {
       WHERE pincode = $1
       LIMIT 1
       `,
-      [pincode]
+      [pincode],
     );
 
     if (pincodeResult.rows.length === 0) {
@@ -107,7 +106,7 @@ const findMyMLA = async (req, res) => {
       JOIN states s ON c.state_id = s.id
       WHERE c.id = $1
       `,
-      [city_id]
+      [city_id],
     );
 
     if (cityResult.rows.length === 0) {
@@ -136,7 +135,7 @@ const findMyMLA = async (req, res) => {
       AND constituency_id = $2
       LIMIT 1
       `,
-      [city_id, constituency_id]
+      [city_id, constituency_id],
     );
 
     if (mlaResult.rows.length === 0) {
@@ -153,19 +152,17 @@ const findMyMLA = async (req, res) => {
       pincode,
       city: city_name,
       state: state_name,
-      mla: {
-        designation: "MLA",
-        name: mla.name,
-        profile_image_url: mla.profile_image_url,
-        website_url: mla.website_url,
-        about: mla.about,
-        assets: mla.assets,
-        networth: mla.networth,
-        salary: mla.salary,
-        liabilities: mla.liabilities
-      },
-    });
 
+      designation: "MLA",
+      name: mla.name,
+      profile_image_url: mla.profile_image_url,
+      website_url: mla.website_url,
+      about: mla.about,
+      assets: mla.assets,
+      networth: mla.networth,
+      salary: mla.salary,
+      liabilities: mla.liabilities,
+    });
   } catch (error) {
     console.error("Error finding MLA:", error);
     return res.status(500).json({
@@ -187,8 +184,7 @@ const findMyMayor = async (req, res) => {
 
     // 2️⃣ Normalize City Name (First Letter Capital)
     const formattedCity =
-      city.trim().charAt(0).toUpperCase() +
-      city.trim().slice(1).toLowerCase();
+      city.trim().charAt(0).toUpperCase() + city.trim().slice(1).toLowerCase();
 
     const designation = `Mayor of ${formattedCity}`;
 
@@ -208,7 +204,7 @@ const findMyMayor = async (req, res) => {
       WHERE designation = $1
       LIMIT 1
       `,
-      [designation]
+      [designation],
     );
 
     if (mayorResult.rows.length === 0) {
@@ -231,9 +227,8 @@ const findMyMayor = async (req, res) => {
       salary: mayor.salary,
       networth: mayor.networth,
       liabilities: mayor.liabilities,
-      assets: mayor.assets
+      assets: mayor.assets,
     });
-
   } catch (error) {
     console.error("Error finding Mayor:", error);
     return res.status(500).json({
