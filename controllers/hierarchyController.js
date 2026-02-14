@@ -54,43 +54,43 @@ const getNationalHierarchy = async (req, res) => {
     const targetState = state?.toLowerCase() || cityToStateMap[normalizedCity];
 
     // if (targetState || ward || pincode)
-if (targetState) {
+    if (targetState) {
+      // 1️⃣ Get state id + proper formatted name
+      const stateInfo = await pool.query(
+        `SELECT id, name FROM states WHERE LOWER(name) = $1`,
+        [targetState],
+      );
 
-  // 1️⃣ Get state id + proper formatted name
-  const stateInfo = await pool.query(
-    `SELECT id, name FROM states WHERE LOWER(name) = $1`,
-    [targetState]
-  );
+      if (stateInfo.rows.length === 0) {
+        return res
+          .status(400)
+          .json({ error: `State '${targetState}' not found.` });
+      }
 
-  if (stateInfo.rows.length === 0) {
-    return res.status(400).json({ error: `State '${targetState}' not found.` });
-  }
+      const stateId = stateInfo.rows[0].id;
+      const stateName = stateInfo.rows[0].name;
 
-  const stateId = stateInfo.rows[0].id;
-  const stateName = stateInfo.rows[0].name;
-
-  // 2️⃣ Fetch leaders using state_id (faster + cleaner than JOIN)
-  const stateResult = await pool.query(
-    `
+      // 2️⃣ Fetch leaders using state_id (faster + cleaner than JOIN)
+      const stateResult = await pool.query(
+        `
     SELECT *
     FROM all_leaders
     WHERE region_type = 'state'
     AND state_id = $1
     ORDER BY COALESCE(display_order, 999999), id
     `,
-    [stateId]
-  );
+        [stateId],
+      );
 
-  const stateHierarchy = buildHierarchy(stateResult.rows);
+      const stateHierarchy = buildHierarchy(stateResult.rows);
 
-  // 3️⃣ Add state_name in response
-  response.state = {
-    level: "State Level",
-    state_name: stateName,  // ⭐ NEW FIELD
-    hierarchy: stateHierarchy,
-  };
-}
-
+      // 3️⃣ Add state_name in response
+      response.state = {
+        level: "State Level",
+        state_name: stateName, // ⭐ NEW FIELD
+        hierarchy: stateHierarchy,
+      };
+    }
 
     // === 4. LOCAL LEVEL ===
     if (cityToStateMap[normalizedCity] || pincode) {
@@ -215,14 +215,16 @@ if (targetState) {
         );
 
         if (wardResult.rows.length > 0) {
-          const wardData = wardResult.rows[0];
+          const wardRows = wardResult.rows;
 
           // Add Ward Councillor just like ward-branch
-          localHierarchy.push({
-            id: null,
-            name: wardData.ward_councillor,
-            designation: `Ward Councillor - Ward ${wardData.ward_number}`,
-            children: [],
+          wardRows.forEach((wardRows) => {
+            localHierarchy.push({
+              id: null,
+              name: wardRows.ward_councillor,
+              designation: `Ward Councillor - Ward ${wardRows.ward_number}`,
+              children: [],
+            });
           });
 
           // Also attach in response object
@@ -232,8 +234,8 @@ if (targetState) {
             hierarchy: localHierarchy,
             constituency_name: constituencyName,
             pincode: pincode,
-            ward_number: wardData.ward_number,
-            ward_councillor: wardData.ward_councillor,
+            ward_number: wardRows.ward_number,
+            ward_councillor: wardRows.ward_councillor,
           };
         } else {
           // fallback if ward not found
@@ -258,8 +260,21 @@ if (targetState) {
             .json({ error: `Ward number ${ward} not found.` });
         }
 
-        const wardData = wardResult.rows[0];
-        const constituencyId = wardData.constituency_id;
+const wardRows = wardResult.rows;
+
+if (wardRows.length === 0) {
+  return res.status(400).json({ error: `Ward number ${ward} not found.` });
+}
+
+const constituencyId = wardRows[0].constituency_id;
+// wardRows.forEach((wardData) => {
+//   localHierarchy.push({
+//     id: null,
+//     name: wardData.ward_councillor,
+//     designation: `Ward Councillor - Ward ${wardData.ward_number}`,
+//     children: [],
+//   });
+// });
 
         // Get constituency name
         const constituencyResult = await pool.query(
@@ -325,8 +340,8 @@ if (targetState) {
         // Add Ward Councillor
         localHierarchy.push({
           id: null,
-          name: wardData.ward_councillor,
-          designation: `Ward Councillor - Ward ${wardData.ward_number}`,
+          name: wardRows.ward_councillor,
+          designation: `Ward Councillor - Ward ${wardRows.ward_number}`,
           children: [],
         });
 
@@ -335,8 +350,8 @@ if (targetState) {
           city_name: cityName,
           hierarchy: localHierarchy,
           constituency_name: constituencyName,
-          ward_number: wardData.ward_number,
-          ward_councillor: wardData.ward_councillor,
+          ward_number: wardRows.ward_number,
+          ward_councillor: wardRows.ward_councillor,
         };
       } else {
         // === NO WARD/PINCODE - existing behavior (all MLAs + other city leaders) ===
@@ -394,7 +409,6 @@ function buildHierarchy(leaders) {
 
 function sortByDisplayOrder(nodes) {
   nodes.sort((a, b) => {
-
     // ⭐ SPECIAL RULE → Junior ministers always last
     const aJunior = a.designation?.toLowerCase().includes("junior");
     const bJunior = b.designation?.toLowerCase().includes("junior");
@@ -422,8 +436,6 @@ function sortByDisplayOrder(nodes) {
     }
   });
 }
-
-
 
 module.exports = { getNationalHierarchy };
 //--------
