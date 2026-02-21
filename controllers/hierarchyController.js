@@ -234,8 +234,11 @@ const getNationalHierarchy = async (req, res) => {
             hierarchy: localHierarchy,
             constituency_name: constituencyName,
             pincode: pincode,
-            ward_number: wardRows.ward_number,
-            ward_councillor: wardRows.ward_councillor,
+            ward_number: wardRows[0].ward_number,
+            ward_councillors: wardRows.map((wardRow) => ({
+              name: wardRow.ward_councillor,
+              ward_number: wardRow.ward_number,
+            })),
           };
         } else {
           // fallback if ward not found
@@ -260,13 +263,15 @@ const getNationalHierarchy = async (req, res) => {
             .json({ error: `Ward number ${ward} not found.` });
         }
 
-const wardRows = wardResult.rows;
+        const wardRows = wardResult.rows;
 
-if (wardRows.length === 0) {
-  return res.status(400).json({ error: `Ward number ${ward} not found.` });
-}
+        if (wardRows.length === 0) {
+          return res
+            .status(400)
+            .json({ error: `Ward number ${ward} not found.` });
+        }
 
-const constituencyId = wardRows[0].constituency_id;
+        const constituencyId = wardRows[0].constituency_id;
 
         // Get constituency name
         const constituencyResult = await pool.query(
@@ -330,11 +335,13 @@ const constituencyId = wardRows[0].constituency_id;
         }
 
         // Add Ward Councillor
-        localHierarchy.push({
-          id: null,
-          name: wardRows.ward_councillor,
-          designation: `Ward Councillor - Ward ${wardRows.ward_number}`,
-          children: [],
+        wardRows.forEach((wardRow) => {
+          localHierarchy.push({
+            id: null,
+            name: wardRow.ward_councillor,
+            designation: `Ward Councillor - Ward ${wardRow.ward_number}`,
+            children: [],
+          });
         });
 
         response.local = {
@@ -342,8 +349,11 @@ const constituencyId = wardRows[0].constituency_id;
           city_name: cityName,
           hierarchy: localHierarchy,
           constituency_name: constituencyName,
-          ward_number: wardRows.ward_number,
-          ward_councillor: wardRows.ward_councillor,
+          ward_number: wardRows[0].ward_number,
+          ward_councillors: wardRows.map((wardRow) => ({
+              name: wardRow.ward_councillor,
+              ward_number: wardRow.ward_number,
+            })),
         };
       } else {
         // === NO WARD/PINCODE - existing behavior (all MLAs + other city leaders) ===
