@@ -6,6 +6,7 @@ const hierarchyRoutes = require('./routes/routes');
 const allowedOrigins = [
   "http://localhost:3000",                 
   "https://civic-india-frontend-beta.vercel.app",
+  "https://www.tarunthakur.com"
 ];
 const PORT = process.env.PORT || 8000;
 
