@@ -32,4 +32,7 @@ router.get("/education/:slug", educationController.getEducationRecords);
 router.get("/find-cm", findMyCM);
 router.get("/find-mla", findMyMLA);
 router.get("/find-mayor", findMyMayor);
+router.get("/apiforuptimerobot", (req, res) => {
+  return res.status(200).send("Civic India Backend Running");
+});
 module.exports = router;
